@@ -1,0 +1,102 @@
+---
+title: "Prediction of HAR using Weight Lifting Dataset"
+output: html_document
+---
+
+##Synopsis
+This report describes the prediction studies done on the Human Activity Recognition dataset done on weight-lifting datasets obtained from
+http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv for the training data, and 
+http://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv for the testing data.
+
+The data is measured from gyroscope sensors attached to the arm, belt, forearm and dumbell. Six young participantswere asked to perform 
+one set of ten repetitions of Unilateral Bicep Curl in five specified fashions
+  A) Exactly correct
+  B) Throwing elbows to the front
+  C) Lifting dumbbell halfway
+  D) Lowering dumbell halfway
+  E) Throwing hips to the front
+
+The work in this report is done based on the work published in [1]. Information is obtained from [2] as well. 
+
+##Preliminary Data Reading and Cleaning
+The csv files are downloaded and stored in the same local directory as the scripts in this file. A pre-cursory check through the training csv file shows multiple columns containing "NA"s,"" and "#DIV/0!". These entries are all treated as NAs and treated ass such when reading the files into R
+```{r}
+library(ggplot2)
+library(caret)
+
+pml_train<-read.table("pml-training.csv", sep="," ,na.strings = c("NA", "","#DIV/0!"), header = TRUE)
+pml_test<-read.table("pml-testing.csv", sep="," ,na.strings = c("NA", "","#DIV/0!"), header = TRUE)
+```
+All columns with NAs are excluded, timestamps and windows are not important, and so are removed from the data before training.
+The column X is simply a running number and is also excluded.
+```{r}
+pml_train_cleaned<-pml_train[,colSums(is.na(pml_train))==0]
+pml_train_cleaned$raw_timestamp_part_1<-NULL
+pml_train_cleaned$raw_timestamp_part_2<-NULL
+pml_train_cleaned$cvtd_timestamp<-NULL
+pml_train_cleaned$new_window<-NULL
+pml_train_cleaned$num_window<-NULL
+pml_train_cleaned$X<-NULL
+```
+The same cleaning is done to the test data. The problem_id column is also not important in the test data and is removed.
+```{r}
+pml_test_cleaned<-pml_test[,colSums(is.na(pml_test))==0]
+pml_test_cleaned$raw_timestamp_part_1<-NULL
+pml_test_cleaned$raw_timestamp_part_2<-NULL
+pml_test_cleaned$cvtd_timestamp<-NULL
+pml_test_cleaned$new_window<-NULL
+pml_test_cleaned$num_window<-NULL
+pml_test_cleaned$X<-NULL
+pml_test_cleaned$problem_id<-NULL
+```
+##Partitioning the Data
+The random seed is set, and the training set is then partitioned into a training set and a cross-validation set.
+```{r}
+set.seed(12345)
+inTrain <-createDataPartition(y=pml_train_cleaned$classe,p=0.7,list=FALSE)
+training<-pml_train_cleaned[inTrain,]
+validation<-pml_train_cleaned[-inTrain,]
+```
+
+##Training the Prediction Model
+The training is done using the Random Forest method, a model fit is produced from the training data. the 'classe' variable is to be the outcome of the training, and prediction is to be made based on all other variables in the data.
+```{r}
+modFit<-train(training$classe~.,method="rf",data=training)
+```
+##Cross Validation and Expected Error Rate
+The cross-validation data set is then applied to the model to give a sense of what the cross-validation error rate will be like.
+```{r}
+validation_predicted<-predict(modFit,validation[,-54])    # remove the classe column
+cm<-confusionMatrix(validation$classe,validation_predicted)
+print(cm)
+```
+##Test Results
+From the confusion matrix accuracy measurement, it seems the error rate will be less than 1.3%.
+The test data is then applied to the model generated.
+```{r}
+test_predicted<-predict(modFit,pml_test_cleaned)
+print(test_predicted)
+```
+The supplied function below is used to write the predicted outputs into files.
+```{r}
+# Write the results to a text file for submission
+pml_write_files = function(x){
+    n = length(x)
+    for(i in 1:n){
+        filename = paste0("problem_id_",i,".txt")
+        write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+    }
+}
+pml_write_files(test_predicted)
+```
+
+Submission of the predicted outputs have been done. Errors have been found in the second and the third output values. Giving a test error rate of
+10%.
+
+##Conclusions
+The error rate in the test data set is much higher than that in the cross validation set. This could be partially due to the small sample size in the test set.
+
+#References
+1. Velloso, E.; Bulling, A.; Gellersen, H.; Ugulino, W.; Fuks, H. Qualitative Activity Recognition of Weight Lifting Exercises. Proceedings of 4th International Conference in Cooperation with SIGCHI (Augmented Human '13) . Stuttgart, Germany: ACM SIGCHI, 2013.
+
+2. http://groupware.les.inf.puc-rio.br/har, visited 2015/12/25
